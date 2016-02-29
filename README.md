@@ -14,7 +14,7 @@ $ python wallflower_pico_server.py
 ```
 Open a web browser and navigate to http://127.0.0.1:5000/ to view the interactive dashboard. By default, the server will also be publically available on your network and accessible via the IP address of your computer (i.e. http://IP_ADDRESS:5000/).
 
-The Wallflower.Pico server is capable of broadcasting changes to the network over a WebSocket port. This allows devices and interfaces to be updated in real-time be receiving all successful responses to create, update, and delete requests. Before enabling the WebSocket funtionality, you will need to install Autobahn|Python, an open-source server for the WebSocket protocol, which can be installed with pip
+The Wallflower.Pico server is capable of broadcasting changes to the network over a WebSocket port. This allows devices and interfaces to be updated in real-time by receiving all successful responses to create, update, and delete requests. Before enabling the WebSocket funtionality, you will need to install Autobahn|Python, an open-source server for the WebSocket protocol, which can be installed with pip
 ```sh
 $ pip install autobahn[twisted]
 ```
@@ -40,7 +40,7 @@ The Wallflower.Pico server is still in beta development, so if you find a bug, p
 
 The Wallflower.Pico source code is licensed under the [AGPL v3][agpl]. You can find a reference to this license at the top of each source code file.
 
-Components which connect to the servers via the API are not affected by the AGPL. This extends to the Python example code and the HTML, JS, and CSS code of the web interface, which are licensed under the [MIT license][mit].
+Components which connect to the server via the API are not affected by the AGPL. This extends to the Python example code and the HTML, JS, and CSS code of the web interface, which are licensed under the [MIT license][mit].
 
 In summary, any modifications to the Wallflower.Pico source code must be distributed according to the terms of the AGPL v3. Any code that connects to the Wallflower server via the API is recognized as a seperate work (not a derivative work) irrespective of where it runs. Lastly, you are free to modify the HTML, JS, and CSS code of the web interface without restrictions, though we would appreciate you sharing what you have created.
 
