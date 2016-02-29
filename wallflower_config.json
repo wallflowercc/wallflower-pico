@@ -1,0 +1,7 @@
+{
+	"network-id": "local",
+	"enable_ws": false,
+	"database": "wallflower_db", 
+	"http_port": 5000, 
+	"ws_port": 5050
+}
