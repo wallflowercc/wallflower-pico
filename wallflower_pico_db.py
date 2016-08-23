@@ -682,7 +682,7 @@ class WallflowerDB:
 
         try:
             # Update network
-            old_details = copy.deepcopy( self.networks[network_id] )
+            old_details = copy.deepcopy( self.networks[network_id]['network-details'] )
             update_network_request['network-details']['updated-at'] = at
             for key in update_network_request['network-details']:
                 self.networks[network_id]['network-details'][key] =\
@@ -1163,7 +1163,7 @@ class WallflowerDB:
             # There was an error.
             if update_message:
                 self.db_message['network-error'] =\
-                    "Network "+network_id+"."+object_id+" Not Deleted"
+                    "Network "+network_id+" Not Deleted"
                 self.db_message['network-code'] = 400
             self.debug( "Unexpected error (11):"+str(sys.exc_info()) )
             
