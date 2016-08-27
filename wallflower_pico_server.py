@@ -32,7 +32,7 @@ __version__ = '0.0.1'
 import sys
 import json
 
-from flask import Flask, request, jsonify, make_response, send_from_directory, g
+from flask import Flask, request, jsonify, make_response, send_from_directory, render_template, g
 from wallflower_pico_db import WallflowerDB
 
 #import re
@@ -92,13 +92,14 @@ pico_db = WallflowerDB()
 
 # Routes
 # Route index/dashboard html file
-@app.route('/')
+@app.route('/', methods=['GET'])
 def root():
     # Return WebSocket or non-WebSocket Interface
+    data = {}
+    data['enable_ws'] = False
     if config['enable_ws']:
-        return send_from_directory('static', 'index_ws.html')
-    else:
-        return send_from_directory('static', 'index.html')
+        data['enable_ws'] = True
+    return render_template('pico/index.html', data=data)
 
 # Route static font files
 @app.route('/fonts/<path:filename>')
@@ -441,7 +442,7 @@ if __name__ == '__main__':
         log.startLogging(sys.stdout)
         
         # Set factory and begin listening to ws
-        factory = BroadcastServerFactory(u"ws://127.0.0.1:5050/network/local")
+        factory = BroadcastServerFactory(u"ws://0.0.0.0:"+str(config["ws_port"])+"/network/local")
         factory.protocol = BroadcastServerProtocol
         listenWS(factory)
         wsResource = WebSocketResource(factory)
@@ -455,11 +456,11 @@ if __name__ == '__main__':
         
         # create a Twisted Web Site and run everything
         site = Site(rootResource)
-        reactor.listenTCP(5000, site)
+        reactor.listenTCP(config["http_port"], site)
 
         # Start the Twisted reactor 
         # TODO: Allow for shutdown without ending/restarting python instance
         reactor.run()
     else:
         # Start the Flask app
-        app.run(host='0.0.0.0')
+        app.run(host='0.0.0.0',port=config["http_port"])

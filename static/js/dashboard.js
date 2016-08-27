@@ -24,9 +24,77 @@
 //
 ///////////////////////////////////////////////////////////////////////////////////
 
+
 // Network to display
 var network_id = 'local';
 var network = {};
+var view_stream = [];
+
+var custom_sidebar_link_callback, ws_callback;
+
+if (enable_ws == true) {
+  // Connect to WebSocket
+  window.onload = function() {
+    // Subscribe to all (successful) responses on the network
+    socket = new WebSocket("ws://"+window.location.hostname+":5050/network/"+network_id);
+    socket.binaryType = "arraybuffer";
+    socket.onopen = function() {
+       console.log("WebSocket Connected!");
+       isopen = true;
+    }
+    socket.onmessage = function(e) {
+       if (typeof e.data == "string") {
+          //console.log("Text message received: " + e.data);
+          try{
+            var response = JSON.parse( e.data );
+            // Route the responses
+            if ( response.hasOwnProperty("response-type") ){
+              if ( response["response-type"] == "object-create" ){
+                doCreateObject( response );
+              }
+              else if ( response["response-type"] == "stream-create" ){
+                doCreateStream( response );
+              }
+              else if ( response["response-type"] == "object-update" ){
+                doUpdateObject( response );
+              }
+              else if ( response["response-type"] == "stream-update" ){
+                doUpdateStream( response );
+              }
+              else if ( response["response-type"] == "points-update" ){
+                doUpdatePoints( response );
+              }
+              else if ( response["response-type"] == "object-delete" ){
+                doDeleteObject( response );
+              }
+              else if ( response["response-type"] == "stream-delete" ){
+                doDeleteStream( response );
+              }
+              
+              // Optional callback
+              if ( jQuery.isFunction( ws_callback ) ){
+                ws_callback( response );
+              }
+            }
+          } catch (e) {
+            console.log( e );
+          }
+       } else {
+          var arr = new Uint8Array(e.data);
+          var hex = '';
+          for (var i = 0; i < arr.length; i++) {
+             hex += ('00' + arr[i].toString(16)).substr(-2);
+          }
+          console.log("Binary message received: " + hex);
+       }
+    }
+    socket.onclose = function(e) {
+       console.log("WebSocket Connection Closed.");
+       socket = null;
+       isopen = false;
+    }
+  };
+}
 
 
 $(document).ready(function(){
@@ -37,136 +105,14 @@ $(document).ready(function(){
   // Load the Highcharts element
   loadPointsPlot();
   
+  // Bind function to panel clicks
+  $(document).on('click', '#dashboard-panel-heading .panel', panelClickResponse );
   
-  /*
-    Add functionality to the dashboard panel heading
-  
-  */
-  $('#dashboard-panel-heading .panel').click(function(e) {
-    // Prevent browser from opening link
-    e.preventDefault();
-    // Select current element
-    var $this = $(this);
-      var id = $this.attr('id');
-      var id_array = id.split('-');
-      var select = id_array[1];
-      
-      // Remove the class 'active' from all elements
-      $('#dashboard-sidebar-nav a.active').removeClass('active');
-      // Add the class 'active' to current element
-      $('#dashboard-sidebar-nav a#sidebar-'+select).addClass('active');
-      
-      // Hide/Show pages
-      $('div#wrapper div.page').addClass('hidden');
-      $('div#wrapper div#page-'+select).removeClass('hidden');
-
-      // Remove any alerts, if applicable
-      $('.alert', $('div#wrapper div#page-'+select)).remove();
-      
-      
-      if( select == 'dashboard' ){
-        $('div#dashboard-sidebar-nav').addClass('hidden');
-        $('div#page-wrapper').addClass('full-width');
-      }else{
-        $('div#dashboard-sidebar-nav').removeClass('hidden');
-        $('div#page-wrapper').removeClass('full-width');
-      }
-      
-      // Load the relevant forms
-      if( select == 'view' ){
-        $("div.page-view-object").addClass('hidden');
-        $("div.page-view-stream").addClass('hidden');
-        $("div.page-view-network").removeClass('hidden');
-        
-        $("div.page-view-network .network-name span").text( network['network-details']['network-name'] );
-        $("div.page-view-network .network-id span").text( network['network-id'] );
-        if ( network.hasOwnProperty("objects") ) {
-          $("div.page-view-network .network-objects span").text( Object.keys( network.objects ).length );
-        }
-        else{
-          $("div.page-view-network .network-objects span").text( 0 );
-        }
-      }
-      else if( select == 'create' ){
-        loadCreateStreamForms();
-      }
-      else if( select == 'update' ){
-        loadUpdateObjectForms();
-        loadUpdateStreamsForms();
-        loadUpdatePointsForms();
-      }
-      else if( select == 'delete' ){
-        loadDeleteObjectForms();
-        loadDeleteStreamsForms();
-      }
-  });
-  
-  /*
-    Add functionality to the sidebar
-  
-  */
-  $('#dashboard-sidebar-nav a.first-level').click(function(e) {
-    // Prevent browser from opening link
-    e.preventDefault();
-    // Select current element
-    var $this = $(this);
-      var id = $this.attr('id');
-      var id_array = id.split('-');
-      var select = id_array[1];
-      
-      // Remove the class 'active' from all elements
-      $('#dashboard-sidebar-nav a.active').removeClass('active');
-      // Add the class 'active' to current element
-      $this.addClass('active');
-      
-      // Hide/Show pages
-      $('div#wrapper div.page').addClass('hidden');
-      $('div#wrapper div#page-'+select).removeClass('hidden');
-      
-      // Remove any alerts, if applicable
-      $('.alert', $('div#wrapper div#page-'+select)).remove();
-      
-      if( select == 'dashboard' ){
-        $('div#dashboard-sidebar-nav').addClass('hidden');
-        $('div#page-wrapper').addClass('full-width');
-      }else{
-        $('div#dashboard-sidebar-nav').removeClass('hidden');
-        $('div#page-wrapper').removeClass('full-width');
-      }
-      
-      // Load the relevant forms
-      if( select == 'view' ){
-        $("div.page-view-object").addClass('hidden');
-        $("div.page-view-stream").addClass('hidden');
-        $("div.page-view-network").removeClass('hidden');
-        
-        $("div.page-view-network .network-name span").text( network['network-details']['network-name'] );
-        $("div.page-view-network .network-id span").text( network['network-id'] );
-        if ( network.hasOwnProperty("objects") ) {
-          $("div.page-view-network .network-objects span").text( Object.keys( network.objects ).length );
-        }
-        else{
-          $("div.page-view-network .network-objects span").text( 0 );
-        }
-      }
-      else if( select == 'create' ){
-        loadCreateStreamForms();
-      }
-      else if( select == 'update' ){
-        loadUpdateObjectForms();
-        loadUpdateStreamsForms();
-        loadUpdatePointsForms();
-      }
-      else if( select == 'delete' ){
-        loadDeleteObjectForms();
-        loadDeleteStreamsForms();
-      }
-  });
-  
+  // Bind function to sidebar clicks
+  $(document).on('click', '#dashboard-sidebar-nav a.first-level', sidebarClickResponse );
   
   /*
     Add functionality to the view network form
-  
   */
   $("form#form-view-network").submit(function(e){
     e.preventDefault();
@@ -547,11 +493,16 @@ $(document).ready(function(){
           message.append("<h4>Success!</h4>");
           req.css({ 'color': '#3c763d' });
           
-          // Create object client-side
-          doCreateObject( response );
+          if (enable_ws == true) {
+            // Use WebSocket message to update client-side
+          }else{
+            // Create object client-side
+            doCreateObject( response );
+          }
+
           // Clear the create object form
           this_form.trigger("reset");
-  
+          
         }else if( response['object-code'] == 304 ){
           // Start Info message
           message.addClass('alert-info');
@@ -652,8 +603,13 @@ $(document).ready(function(){
           message.append("<h4>Success!</h4>");
           req.css({ 'color': '#3c763d' });
           
-          // Create stream client-side
-          doCreateStream( response );
+          if (enable_ws == true) {
+            // Use WebSocket message to update client-side
+          }else{
+            // Create stream client-side
+            doCreateStream( response );
+          }
+          
           // Clear the form
           this_form.trigger("reset");
           
@@ -752,8 +708,12 @@ $(document).ready(function(){
           message.append("<h4>Success!</h4>");
           req.css({ 'color': '#3c763d' });
           
-          // Update object client-side
-          doUpdateObject( response )
+          if (enable_ws == true) {
+            // Use WebSocket message to update client-side
+          }else{
+            // Update object client-side
+            doUpdateObject( response );
+          }
           
           // Don't reset form
           
@@ -848,8 +808,12 @@ $(document).ready(function(){
           message.append("<h4>Success!</h4>");
           req.css({ 'color': '#3c763d' });
           
-          // Update stream client-side
-          doUpdateStream( response );
+          if (enable_ws == true) {
+            // Use WebSocket message to update client-side
+          }else{
+            // Update stream client-side
+            doUpdateStream( response );
+          }
           
           // Don't reset form
           
@@ -975,8 +939,12 @@ $(document).ready(function(){
           message.append("<h4>Success!</h4>");
           req.css({ 'color': '#3c763d' });
           
-          // Update points client-side
-          doUpdatePoints( response );
+          if (enable_ws == true) {
+            // Use WebSocket message to update client-side
+          }else{
+            // Update points client-side
+            doUpdatePoints( response );
+          }
           
           // Don't reset form
           
@@ -1184,9 +1152,13 @@ $(document).ready(function(){
           message.append("<h4>Success!</h4>");
           req.css({ 'color': '#3c763d' });
           
-          // Delete object client-side
-          doDeleteObject( response );
-
+          if (enable_ws == true) {
+            // Use WebSocket message to update client-side
+          }else{
+            // Delete object client-side
+            doDeleteObject( response );
+          }
+          
         }else{
           // Start Danger message
           message.addClass('alert-danger');
@@ -1271,9 +1243,13 @@ $(document).ready(function(){
           message.append("<h4>Success!</h4>");
           req.css({ 'color': '#3c763d' });
           
-          // Delete stream client-side
-          doDeleteStream( response );
-
+          if (enable_ws == true) {
+            // Use WebSocket message to update client-side
+          }else{
+            // Delete stream client-side
+            doDeleteStream( response );
+          }
+          
         }else{
           // Start Danger message
           message.addClass('alert-danger');
@@ -1379,6 +1355,7 @@ $(document).ready(function(){
     $("#modal-body-delete-stream").html( message );
   });
   
+  
 });
 
 
@@ -1397,6 +1374,16 @@ function doCreateObject( response ){
   loadCreateStreamForms();
   // Reload Side Bar
   loadViewSideBarNav();
+  
+  if (enable_ws == true) {
+    // Notification
+    var current_page = $('div.page:not(.hidden) div.row:not(.hidden) .note');
+    var note = $("<div class='alert alert-success affix'><p>Received Object Create Message</p><div>");
+    current_page.html( note );
+    note.fadeTo(1000, 1).fadeTo(1000, 0, function(){
+      $(this).remove(); 
+    });
+  }
 }
 
 // Process stream-create response
@@ -1412,6 +1399,16 @@ function doCreateStream( response ){
   
   // Reload Side Bar
   loadViewSideBarNav();
+  
+  if (enable_ws == true) {
+    // Notification
+    var current_page = $('div.page:not(.hidden) div.row:not(.hidden) .note');
+    var note = $("<div class='alert alert-success affix'><p>Received Stream Create Message</p><div>");
+    current_page.html( note );
+    note.fadeTo(1000, 1).fadeTo(1000, 0, function(){
+      $(this).remove(); 
+    });
+  }
 }
 
 // Process object-update response
@@ -1423,6 +1420,15 @@ function doUpdateObject( response ){
 
   // Reload Side Bar
   loadViewSideBarNav();
+  if (enable_ws == true) {
+    // Notification
+    var current_page = $('div.page:not(.hidden) div.row:not(.hidden) .note');
+    var note = $("<div class='alert alert-warning affix'><p>Received Object Update Message</p><div>");
+    current_page.html( note );
+    note.fadeTo(1000, 1).fadeTo(1000, 0, function(){
+      $(this).remove(); 
+    });
+  }
 }
 
 // Process stream-update response
@@ -1434,6 +1440,16 @@ function doUpdateStream( response ){
   
   // Reload Side Bar
   loadViewSideBarNav();
+  
+  if (enable_ws == true) {
+    // Notification
+    var current_page = $('div.page:not(.hidden) div.row:not(.hidden) .note');
+    var note = $("<div class='alert alert-warning affix'><p>Received Stream Update Message</p><div>");
+    current_page.html( note );
+    note.fadeTo(1000, 1).fadeTo(1000, 0, function(){
+      $(this).remove(); 
+    });
+  }
 }
 
 // Process points-update response
@@ -1442,6 +1458,35 @@ function doUpdatePoints( response ){
   for ( var point in response['points'] ){
     network['objects'][response['object-id']]['streams'][response['stream-id']]['points'].unshift( point );
   }
+  
+  if( view_stream.length == 3 ){
+    if( view_stream[0] == response['network-id'] && view_stream[1] == response['object-id'] && view_stream[2] == response['stream-id'] ){
+      // User is currently viewing stream that was just updated.
+      if( network.objects[response['object-id']].streams[response['stream-id']]['points-details']['points-type'] == 'i' ||
+          network.objects[response['object-id']].streams[response['stream-id']]['points-details']['points-type'] == 'f' ){
+          
+        reloadPointsPlot( response['network-id'], response['object-id'], response['stream-id'] );
+        
+        $('.page-view-stream.points-plot').removeClass('hidden');
+      }
+      else{
+      
+        reloadPointsTable( response['network-id'], response['object-id'], response['stream-id'] );
+        
+        $('.page-view-stream.points-table').removeClass('hidden');
+      }
+    }
+  }
+  
+  if (enable_ws == true) {
+    // Notification
+    var current_page = $('div.page:not(.hidden) div.row:not(.hidden) .note');
+    var note = $("<div class='alert alert-warning affix'><p>Received Points Update Message</p><div>");
+    current_page.html( note );
+    note.fadeTo(1000, 1).fadeTo(1000, 0, function(){
+      $(this).remove(); 
+    });
+  }
 }
 
 // Process object-delete response
@@ -1449,11 +1494,23 @@ function doDeleteObject( response ){
   // Delete object from client-side record
   delete network['objects'][response['object-id']];
   
+  // TODO: If user is viewing stream or object when deleted
+  
   // Reload the object and stream delete forms
   loadDeleteObjectForms();
   loadDeleteStreamsForms();
   // Reload Side Bar
   loadViewSideBarNav();
+  
+  if (enable_ws == true) {
+    // Notification
+    var current_page = $('div.page:not(.hidden) div.row:not(.hidden) .note');
+    var note = $("<div class='alert alert-danger affix'><p>Received Object Delete Message</p><div>");
+    current_page.html( note );
+    note.fadeTo(1000, 1).fadeTo(1000, 0, function(){
+      $(this).remove(); 
+    });
+  }
 }
 
 // Process stream-delete response
@@ -1461,14 +1518,26 @@ function doDeleteStream( response ){
   // Delete stream from client-side record
   delete network['objects'][response['object-id']]['streams'][response['stream-id']];
   
+  // TODO: If user is viewing stream when deleted
+  
   // Reload the stream delete form
   loadDeleteStreamsForms();
   // Reload Side Bar
   loadViewSideBarNav();
+  
+  if (enable_ws == true) {
+    // Notification
+    var current_page = $('div.page:not(.hidden) div.row:not(.hidden) .note');
+    var note = $("<div class='alert alert-danger affix'><p>Received Stream Delete Message</p><div>");
+    current_page.html( note );
+    note.fadeTo(1000, 1).fadeTo(1000, 0, function(){
+      $(this).remove(); 
+    });
+  }
 }
-  
-  
-  
+
+
+
 // Initialize/reload the create stream form
 function loadCreateStreamForms(){
   // Clear the object id option
@@ -1637,6 +1706,147 @@ function loadDeleteStreamsForms(){
   }
 }
 
+
+
+
+/*
+  Add functionality to the dashboard panels
+*/
+function panelClickResponse(e){
+  // Prevent browser from opening link
+  e.preventDefault();
+  // Reset 
+  view_stream = [];
+  
+  // Select current element
+  var $this = $(this);
+  var id = $this.attr('id');
+  var id_array = id.split('-');
+  var select = id_array[1];
+  
+  // Remove the class 'active' from all elements
+  $('#dashboard-sidebar-nav a.active').removeClass('active');
+  // Add the class 'active' to current element
+  $('#dashboard-sidebar-nav a#sidebar-'+select).addClass('active');
+  
+  // Hide/Show pages
+  $('div#wrapper div.page').addClass('hidden');
+  $('div#wrapper div#page-'+select).removeClass('hidden');
+
+  // Remove any alerts, if applicable
+  $('.alert', $('div#wrapper div#page-'+select)).remove();
+  
+  /*
+  if( select == 'dashboard' ){
+    $('div#dashboard-sidebar-nav').addClass('hidden');
+    $('div#page-wrapper').addClass('full-width');
+  }else{
+    $('div#dashboard-sidebar-nav').removeClass('hidden');
+    $('div#page-wrapper').removeClass('full-width');
+  }
+  */
+  
+  // Load the relevant forms
+  if( select == 'view' ){
+    $("div.page-view-object").addClass('hidden');
+    $("div.page-view-stream").addClass('hidden');
+    $("div.page-view-network").removeClass('hidden');
+    
+    $("div.page-view-network .network-name span").text( network['network-details']['network-name'] );
+    $("div.page-view-network .network-id span").text( network['network-id'] );
+    if ( network.hasOwnProperty("objects") ) {
+      $("div.page-view-network .network-objects span").text( Object.keys( network.objects ).length );
+    }
+    else{
+      $("div.page-view-network .network-objects span").text( 0 );
+    }
+  }
+  else if( select == 'create' ){
+    loadCreateStreamForms();
+  }
+  else if( select == 'update' ){
+    loadUpdateObjectForms();
+    loadUpdateStreamsForms();
+    loadUpdatePointsForms();
+  }
+  else if( select == 'delete' ){
+    loadDeleteObjectForms();
+    loadDeleteStreamsForms();
+  }
+
+}
+  
+  
+function sidebarClickResponse(e) {
+  // Prevent browser from opening link
+  e.preventDefault();
+  // Reset
+  view_stream = [];
+  
+  // Select current element
+  var $this = $(this);
+  var id = $this.attr('id');
+  var id_array = id.split('-');
+  var select = id_array[1];
+  
+  // Remove the class 'active' from all elements
+  $('#dashboard-sidebar-nav a.active').removeClass('active');
+  // Add the class 'active' to current element
+  $this.addClass('active');
+  
+  // Hide/Show pages
+  $('div#wrapper div.page').addClass('hidden');
+  $('div#wrapper div#page-'+select).removeClass('hidden');
+  
+  // Remove any alerts, if applicable
+  $('.alert', $('div#wrapper div#page-'+select)).remove();
+  
+  /*
+  if( select == 'dashboard' ){
+    $('div#dashboard-sidebar-nav').addClass('hidden');
+    $('div#page-wrapper').addClass('full-width');
+  }else{
+    $('div#dashboard-sidebar-nav').removeClass('hidden');
+    $('div#page-wrapper').removeClass('full-width');
+  }
+  */
+  
+  // Load the relevant forms
+  if( select == 'view' ){
+    $("div.page-view-object").addClass('hidden');
+    $("div.page-view-stream").addClass('hidden');
+    $("div.page-view-network").removeClass('hidden');
+    
+    $("div.page-view-network .network-name span").text( network['network-details']['network-name'] );
+    $("div.page-view-network .network-id span").text( network['network-id'] );
+    if ( network.hasOwnProperty("objects") ) {
+      $("div.page-view-network .network-objects span").text( Object.keys( network.objects ).length );
+    }
+    else{
+      $("div.page-view-network .network-objects span").text( 0 );
+    }
+  }
+  else if( select == 'create' ){
+    loadCreateStreamForms();
+  }
+  else if( select == 'update' ){
+    loadUpdateObjectForms();
+    loadUpdateStreamsForms();
+    loadUpdatePointsForms();
+  }
+  else if( select == 'delete' ){
+    loadDeleteObjectForms();
+    loadDeleteStreamsForms();
+  }
+  else if ( jQuery.isFunction( custom_sidebar_link_callback ) ){
+    // For custom sidebar link(s)
+    custom_sidebar_link_callback( select );
+  }
+}
+
+/*
+  Add functionality to the view links within the sidebar
+*/
 function loadViewSideBarNav(){
   
   var sidebar_view_objects_link = $('a#sidebar-view');
@@ -1678,6 +1888,9 @@ function loadViewSideBarNav(){
     $('a', sidebar_view_object_list).click(function(e) {
       // Prevent browser from opening link
       e.preventDefault();
+      // Reset
+      view_stream = [];
+      
       // Select current element
       var $this = $(this);
       var id = $this.attr('id');
@@ -1715,6 +1928,9 @@ function loadViewSideBarNav(){
         $("div.page-view-stream .stream-name span").text( network.objects[object_id].streams[stream_id]['stream-details']['stream-name'] );
         $("div.page-view-stream .stream-id span").text( stream_id );
         $("div.page-view-stream .stream-type span").text( network.objects[object_id].streams[stream_id]['stream-details']['stream-type'] );
+        
+        // Record which stream is being viewed
+        view_stream = [network_id, object_id, stream_id];
         
         if( !network.objects[object_id].streams[stream_id].hasOwnProperty("points") || 
             network.objects[object_id].streams[stream_id].points.length == 0 ) {
@@ -1772,7 +1988,7 @@ function loadNetwork(){
     cache: false,
     success: function(response_data) {
       // Called when successful
-      //console.log( response_data );
+      // console.log( response_data );
       // Store response
       network = response_data;
       //console.log(network);
@@ -1849,7 +2065,6 @@ function reloadPointsPlot( network_id, object_id, stream_id ){
     cache: false,
     data: {},
     success : function(response){
-      //console.log( response );
       if( response['points-code'] == 200 ){
         var points = response.points;
         // Iterate over points to place in Highcharts format
@@ -1887,7 +2102,6 @@ function reloadPointsPlot( network_id, object_id, stream_id ){
 //
 function reloadPointsTable( network_id, object_id, stream_id ){
   var tbody = $('div#page-view-points-table tbody')
-  tbody.html('');
   // Send the request to the WCC server
   $.ajax({
     url : '/networks/'+network_id+'/objects/'+object_id+'/streams/'+stream_id+'/points?limit=20',
@@ -1895,7 +2109,7 @@ function reloadPointsTable( network_id, object_id, stream_id ){
     cache: false,
     data: {},
     success : function(response){
-      //console.log( response );
+      tbody.html('');
       if( response['points-code'] == 200 ){
         var points = response.points;
         // Iterate over points to populate the table.
@@ -1905,13 +2119,13 @@ function reloadPointsTable( network_id, object_id, stream_id ){
             '<td>'+points[i].at+'</td>'+
             '<td>'+(new Date(points[i].at)).toLocaleString()+'</td></tr>'
           );
-          //console.log( points[i].value );
         }
       }else{
         // Something went wrong
       }
     },
     error : function(jqXHR, textStatus, errorThrown){
+      tbody.html('');
       // Called when there is an error
       console.log(jqXHR.message);
     }
