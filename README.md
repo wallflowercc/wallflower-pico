@@ -30,7 +30,7 @@ Then start the server by running
 ```sh
 $ python wallflower_pico_server.py
 ```
-Note that by enabling the WebSocket port, you will use index_ws.html instead of index.html as the web interface. Additionally, the WebSocket port is not capable of receiving requests and any messages sent to the port will be ignored.
+Note that the WebSocket port is not capable of receiving requests and any messages sent to the port will be ignored.
 
 The wallflower_demo.py file includes sample Python code for creating objects and streams and for sending new datapoints. Running the demo code with the WebSocket port enabled will illustrate the capabilities of the interactive dashboard. The wallflower_demo_ws.py file includes sample code for listening to messages broadcast by the WebSocket port using an Autobahn client.
 
