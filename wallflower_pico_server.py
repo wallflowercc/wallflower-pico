@@ -72,23 +72,12 @@ if config['enable_ws']:
 
 app = Flask(__name__)
 
-# Functions for connecting to SQLite database with Flask
-def connect_to_database():
-    return sqlite3.connect( config['database']+'.sqlite' )
-    
-def get_db():
-    db = getattr(g, '_database', None)
-    if db is None:
-        db = g._database = connect_to_database()
-    return db
-
 @app.teardown_appcontext
 def close_connection(exception):
     db = getattr(g, '_database', None)
     if db is not None:
         db.close()
-        
-pico_db = WallflowerDB()
+
 
 # Routes
 # Route index/dashboard html file
@@ -117,6 +106,9 @@ def send_file(filename):
 # Route Network Requests
 @app.route('/networks/<network_id>', methods=['GET'])
 def networks(network_id):
+    pico_db = WallflowerDB()
+    pico_db.database = config['database']
+
     # Check network id
     if network_id != config['network-id']:
         response = {
@@ -126,7 +118,6 @@ def networks(network_id):
         return jsonify(**response)
         
     at = datetime.datetime.utcnow().isoformat() + 'Z'
-    pico_db.connect( get_db() )
     
     response = {
         'network-id': config['network-id']
@@ -146,9 +137,10 @@ def networks(network_id):
 # Route Object Requests
 @app.route('/networks/'+config['network-id']+'/objects/<object_id>', methods=['GET','PUT','POST','DELETE'])
 def objects(object_id):
-
+    pico_db = WallflowerDB()
+    pico_db.database = config['database']
+    
     at = datetime.datetime.utcnow().isoformat() + 'Z'
-    pico_db.connect( get_db() )
 
     object_request = {
         'object-id': object_id
@@ -172,7 +164,7 @@ def objects(object_id):
         object_name = request.args.get('object-name',None,type=str)
         if object_name is not None:
             object_request['object-details']['object-name'] = object_name
-        
+
         pico_db.do(object_request,'create','object',(config['network-id'],object_id),at)
         response.update( pico_db.db_message )
         
@@ -213,9 +205,10 @@ def objects(object_id):
 # Route Object Requests
 @app.route('/networks/'+config['network-id']+'/objects/<object_id>/streams/<stream_id>', methods=['GET','PUT','POST','DELETE'])
 def streams(object_id,stream_id):
-     
+    pico_db = WallflowerDB()
+    pico_db.database = config['database']
+    
     at = datetime.datetime.utcnow().isoformat() + 'Z'
-    pico_db.connect( get_db() )
     
     stream_request = {
         'stream-id': stream_id
@@ -228,7 +221,7 @@ def streams(object_id,stream_id):
     }
     
     if request.method == 'GET': # Read
-        # Read Object Details        
+        # Read Object Details
         pico_db.do(stream_request,'read','stream',(config['network-id'],object_id,stream_id),at)
         response.update( pico_db.db_message )
         
@@ -265,7 +258,7 @@ def streams(object_id,stream_id):
         stream_name = request.args.get('stream-name',None,type=str)
         if stream_name is not None:
             stream_request['stream-details']['stream-name'] = stream_name
-            
+
         pico_db.do(stream_request,'update','stream',(config['network-id'],object_id,stream_id),at)
         response.update( pico_db.db_message )
         
@@ -290,9 +283,10 @@ def streams(object_id,stream_id):
 # Route Stream Requests
 @app.route('/networks/'+config['network-id']+'/objects/<object_id>/streams/<stream_id>/points', methods=['GET','POST'])
 def points(object_id,stream_id):
+    pico_db = WallflowerDB()
+    pico_db.database = config['database']
     
     at = datetime.datetime.utcnow().isoformat() + 'Z'
-    pico_db.connect( get_db() )
     
     points_request = {
         'stream-id': stream_id,
@@ -324,7 +318,7 @@ def points(object_id,stream_id):
             point_search['end'] = end
         
         points_request['points'] = point_search
-
+        
         pico_db.do(points_request,'search','points',(config['network-id'],object_id,stream_id),at)
         response.update( pico_db.db_message )
         
@@ -421,22 +415,27 @@ if config['enable_ws']:
 if __name__ == '__main__':
     # Check if the network exists and create, if necessary
     at = datetime.datetime.utcnow().isoformat() + 'Z'
-    conn = sqlite3.connect( config['database']+'.sqlite' )
-    pico_db.connect( conn )
-    exists = pico_db.loadNetworkRecord(config['network-id'])
-
-    if not exists:
-        network_request = {
-            'network-id': config['network-id'],
-            'network-details': {
-                'network-name': 'Local Wallflower.cc Network'
-            }
-        }
-        pico_db.do(network_request,'create','network',(config['network-id'],),at)
-    # Close database connection
-    conn.close()
     
-    # Add WebSocket    
+    with app.app_context():
+        pico_db = WallflowerDB()
+        pico_db.database = config['database']
+        
+        # Create wcc_networks table, if necessary
+        pico_db.execute( 'CREATE TABLE IF NOT EXISTS wcc_networks (timestamp date, network_id text, network_record text)' )
+        
+        # Check if default network exists
+        exists = pico_db.loadNetworkRecord(config['network-id'])
+        if not exists:
+            # Create the default network
+            network_request = {
+                'network-id': config['network-id'],
+                'network-details': {
+                    'network-name': 'Local Wallflower.cc Network'
+                }
+            }
+            pico_db.do(network_request,'create','network',(config['network-id'],),at)
+    
+    # Add WebSocket
     if config['enable_ws']:
         # Setup the Twisted server with Flask app
         log.startLogging(sys.stdout)
