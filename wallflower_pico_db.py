@@ -37,6 +37,7 @@ import copy
 import re
 
 from base.wallflower_packet import WallflowerPacket
+from flask import g
 
 class WallflowerDB:
     
@@ -49,22 +50,60 @@ class WallflowerDB:
     # For create, update, delete, response contains the
     # validated request (which has been executed by the db)
     response = None
-    completed_request_tuple = None
-    networks = {}
-    
-    connection = None
-    cursor = None        
-    
-    def connect(self,connection):
-        self.connection = connection
-        self.cursor = connection.cursor()
+    networks = {}        
+
+    # Functions for connecting to SQLite database with Flask
+    def connect_to_database(self):
+        return sqlite3.connect( self.database+'.sqlite' )
         
-        # Create database table, if applicable
-        query = 'CREATE TABLE IF NOT EXISTS wcc_networks '
-        query += '(timestamp date, network_id text, network_record text)'
-        self.cursor.execute( query )
-        
-        
+    def execute(self, query, query_params={}):
+        try:
+            db = getattr(g, '_database', None)
+            if db is None:
+                db = g._database = self.connect_to_database()
+            db = self.connect_to_database()
+            cursor = db.cursor()
+            cursor.execute( query, query_params )
+            db.commit()
+            cursor.close()
+            #db.close()
+            return True
+                
+        except sqlite3.OperationalError, err:
+            self.debug( err )
+            db.rollback()
+            cursor.close()
+            #db.close()
+            return False
+            
+        except:
+            self.debug( "Unexpected error (execute):"+str(sys.exc_info()) )
+            return False
+            
+    def query(self, query, query_params={}):
+        try:
+            db = getattr(g, '_database', None)
+            if db is None:
+                db = g._database = self.connect_to_database()
+            db = self.connect_to_database()
+            cursor = db.cursor()
+            cursor.execute( query, query_params )
+            content = cursor.fetchall()
+            cursor.close()
+            #db.close()
+            return content, True
+                
+        except sqlite3.OperationalError, err:
+            self.debug( err )
+            db.rollback()
+            cursor.close()
+            #db.close()
+            return None, False
+            
+        except:
+            self.debug( "Unexpected error (query):"+str(sys.exc_info()) )
+            return None, False
+            
     '''
     Print Messages
     '''
@@ -331,38 +370,35 @@ class WallflowerDB:
                 'network_id': network_id,
                 'network_record': json.dumps( create_network_request )
             }
-            self.cursor.execute( query, query_params )
-            self.connection.commit()
+            success = self.execute( query, query_params )
             
-            created = True
-            self.debug( "Network "+network_id+" Created" )
-            self.db_message['network-message'] =\
-                "Network "+network_id+" Created"
-            self.db_message['network-code'] = 201
-            self.db_message['network-details'] =\
-                create_network_request['network-details']
-            
-            # Successful. Store request.
-            completed_request = {
-                'type': 'create',
-                'level': 'network',
-                'network-id': network_id,
-                'request':  json.loads( json.dumps( create_network_request ) )
-            }
-            
-            self.completed_request_tuple += (completed_request,)
-            
-            # Network has been load. Record changes locally
-            self.networks[network_id] = create_network_request
-
-        except sqlite3.OperationalError, err:
-            self.db_message['network-error'] =\
-                "Network "+network_id+" Not Created"
-            self.db_message['network-code'] = 400
-            self.debug( "Error: Network "+network_id+" Not Created" )
-            self.debug( err )
-            self.connection.rollback()
-            
+            if success:
+                created = True
+                self.debug( "Network "+network_id+" Created" )
+                self.db_message['network-message'] =\
+                    "Network "+network_id+" Created"
+                self.db_message['network-code'] = 201
+                self.db_message['network-details'] =\
+                    create_network_request['network-details']
+                
+                '''
+                # Successful. Store request.
+                completed_request = {
+                    'type': 'create',
+                    'level': 'network',
+                    'network-id': network_id,
+                    'request':  json.loads( json.dumps( create_network_request ) )
+                }
+                self.completed_request_tuple += (completed_request,)
+                '''
+                
+                # Network has been load. Record changes locally
+                self.networks[network_id] = create_network_request
+            else:
+                self.db_message['network-error'] =\
+                    "Network "+network_id+" Not Created"
+                self.db_message['network-code'] = 400
+                self.debug( "Error: Network "+network_id+" Not Created" )
         except:
             self.db_message['network-error'] =\
                 "Network "+network_id+" Not Created"
@@ -404,36 +440,35 @@ class WallflowerDB:
                 'network_id': network_id,
                 'network_record': json.dumps( self.networks[network_id] )
             }
-            self.cursor.execute( query, query_params )
-            self.connection.commit()
+            success = self.execute( query, query_params )
             
-            created = True
-            self.db_message['object-message'] =\
-                "Object "+network_id+"."+object_id+" Created"
-            self.db_message['object-code'] = 201
-            self.db_message['object-details'] = \
-                create_object_request['object-details']
-            
-            self.debug( "Object "+network_id+"."+object_id+" Created" )
-            
-            # Successful. Store request(s).
-            completed_request = {
-                'type': 'create',
-                'level': 'object',
-                'network-id': network_id,
-                'object-id': object_id,
-                'request':  json.loads( json.dumps( create_object_request ) )
-            }
-            
-            self.completed_request_tuple += (completed_request,)
-            
-        except sqlite3.OperationalError, err:
-            self.db_message['object-error'] =\
-                "Object "+network_id+"."+object_id+" Not Created"
-            self.db_message['object-code'] = 400
-            self.debug( "Error: Object "+network_id+"."+object_id+" Not Created" )
-            self.debug( err )
-            self.connection.rollback()
+            if success:
+                created = True
+                self.db_message['object-message'] =\
+                    "Object "+network_id+"."+object_id+" Created"
+                self.db_message['object-code'] = 201
+                self.db_message['object-details'] = \
+                    create_object_request['object-details']
+                
+                self.debug( "Object "+network_id+"."+object_id+" Created" )
+                
+                '''
+                # Successful. Store request(s).
+                completed_request = {
+                    'type': 'create',
+                    'level': 'object',
+                    'network-id': network_id,
+                    'object-id': object_id,
+                    'request':  json.loads( json.dumps( create_object_request ) )
+                }
+                self.completed_request_tuple += (completed_request,)
+                '''
+                
+            else:
+                self.db_message['object-error'] =\
+                    "Object "+network_id+"."+object_id+" Not Created"
+                self.db_message['object-code'] = 400
+                self.debug( "Error: Object "+network_id+"."+object_id+" Not Created" )
             
         except:
             self.db_message['object-error'] =\
@@ -503,55 +538,56 @@ class WallflowerDB:
                         query += ', value'+str(i)+' integer'
             query = query + ')'
             
-            self.cursor.execute(query)
-            #self.connection.commit()
+            success = self.execute(query)
             
-            create_stream_request['stream-details']['created-at'] = at
-            create_stream_request['points'] = []
-            self.networks[network_id]['objects'][object_id]['streams'][stream_id] = create_stream_request
+            if success:
             
-            # Form SQL Query
-            query = "UPDATE wcc_networks SET timestamp=:at, "
-            query += "network_record=:network_record "
-            query += "WHERE network_id=:network_id"
-            query_params = {
-                'at': str(at),
-                'network_id': network_id,
-                'network_record': json.dumps( self.networks[network_id] )
-            }
-            self.cursor.execute( query, query_params )
-            self.connection.commit()
-            
-            created = True
-            
-            self.db_message['stream-message'] =\
-                "Stream "+network_id+"."+object_id+"."+stream_id+" Created"
-            self.db_message['stream-code'] = 201
-            self.db_message['stream-details'] =\
-                create_stream_request['stream-details']
-            self.db_message['points-details'] =\
-                create_stream_request['points-details']
-            
-            self.debug( "Stream "+network_id+"."+object_id+"."+stream_id+" Created" )
-
-            # Successful. Store request(s).
-            completed_request = {
-                'type': 'create',
-                'level': 'stream',
-                'network-id': network_id,
-                'object-id': object_id,
-                'stream-id': stream_id,
-                'request':  json.loads( json.dumps( create_stream_request ) )
-            }
-            self.completed_request_tuple += (completed_request,)
-            
-        except sqlite3.OperationalError, err:
-            self.db_message['stream-error'] =\
-                "Stream "+network_id+"."+object_id+"."+stream_id+" Not Created"
-            self.db_message['stream-code'] = 400
-            self.debug( "Error: Stream "+network_id+"."+object_id+"."+stream_id+" Not Created" )
-            self.debug( err )
-            self.connection.rollback()
+                create_stream_request['stream-details']['created-at'] = at
+                create_stream_request['points'] = []
+                self.networks[network_id]['objects'][object_id]['streams'][stream_id] = create_stream_request
+                
+                # Form SQL Query
+                query = "UPDATE wcc_networks SET timestamp=:at, "
+                query += "network_record=:network_record "
+                query += "WHERE network_id=:network_id"
+                query_params = {
+                    'at': str(at),
+                    'network_id': network_id,
+                    'network_record': json.dumps( self.networks[network_id] )
+                }
+                success = self.execute( query, query_params )
+                
+                if success:
+                    created = True
+                    
+                    self.db_message['stream-message'] =\
+                        "Stream "+network_id+"."+object_id+"."+stream_id+" Created"
+                    self.db_message['stream-code'] = 201
+                    self.db_message['stream-details'] =\
+                        create_stream_request['stream-details']
+                    self.db_message['points-details'] =\
+                        create_stream_request['points-details']
+                    
+                    self.debug( "Stream "+network_id+"."+object_id+"."+stream_id+" Created" )
+                    
+                    '''
+                    # Successful. Store request(s).
+                    completed_request = {
+                        'type': 'create',
+                        'level': 'stream',
+                        'network-id': network_id,
+                        'object-id': object_id,
+                        'stream-id': stream_id,
+                        'request':  json.loads( json.dumps( create_stream_request ) )
+                    }
+                    self.completed_request_tuple += (completed_request,)
+                    '''
+                    
+            if not created:
+                self.db_message['stream-error'] =\
+                    "Stream "+network_id+"."+object_id+"."+stream_id+" Not Created"
+                self.db_message['stream-code'] = 400
+                self.debug( "Error: Stream "+network_id+"."+object_id+"."+stream_id+" Not Created" )
     
         except:
             # There was an error.
@@ -697,33 +733,32 @@ class WallflowerDB:
                 'network_id': network_id,
                 'network_record': json.dumps( self.networks[network_id] )
             }
-            self.cursor.execute( query, query_params )
-            self.connection.commit()
+            success = self.execute( query, query_params )
             
-            updated = True
-            self.db_message['network-message'] = "Network "+network_id+" Updated"
-            self.db_message['network-code'] = 200
-            # Return only updated details
-            self.db_message['network-details'] =\
-                update_network_request['network-details']
-            self.debug( "Network "+network_id+" Updated" )
-            
-            # Successful. Store request.
-            completed_request = {
-                'type': 'update',
-                'level': 'network',
-                'network-id': network_id,
-                'request':  json.loads( json.dumps( update_network_request ) )
-            }
-            
-            self.completed_request_tuple += (completed_request,)
+            if success:
+                updated = True
                 
-        except sqlite3.OperationalError, err:
-            self.db_message['network-error'] = "Network "+network_id+" Not Updated"
-            self.db_message['network-code'] = 400
-            self.debug( "Error: Network "+network_id+" Not Updated" )
-            self.debug( err )
-            self.connection.rollback()
+                self.db_message['network-message'] = "Network "+network_id+" Updated"
+                self.db_message['network-code'] = 200
+                # Return only updated details
+                self.db_message['network-details'] =\
+                    update_network_request['network-details']
+                self.debug( "Network "+network_id+" Updated" )
+                
+                '''
+                # Successful. Store request.
+                completed_request = {
+                    'type': 'update',
+                    'level': 'network',
+                    'network-id': network_id,
+                    'request':  json.loads( json.dumps( update_network_request ) )
+                }
+                self.completed_request_tuple += (completed_request,)
+                '''
+            else:
+                self.db_message['network-error'] = "Network "+network_id+" Not Updated"
+                self.db_message['network-code'] = 400
+                self.debug( "Error: Network "+network_id+" Not Updated" )
             
         except:
             self.db_message['network-error'] = "Network "+network_id+" Not Updated"
@@ -773,35 +808,35 @@ class WallflowerDB:
                 'network_id': network_id,
                 'network_record': json.dumps( self.networks[network_id] )
             }
-            self.cursor.execute( query, query_params )
-            self.connection.commit()
+            success = self.execute( query, query_params )
             
-            updated = True
-            self.db_message['object-message'] =\
-                "Object "+network_id+"."+object_id+" Updated"
-            self.db_message['object-code'] = 200
-            # Return only updated details
-            self.db_message['object-details'] =\
-                update_object_request['object-details']
-            self.debug( "Object "+network_id+"."+object_id+" Updated" )
-            
-            # Successful. Store request(s).
-            completed_request = {
-                'type': 'update',
-                'level': 'object',
-                'network-id': network_id,
-                'object-id': object_id,
-                'request':  json.loads( json.dumps( update_object_request ) )
-            }
-            self.completed_request_tuple += (completed_request,)
-            
-        except sqlite3.OperationalError, err:
-            self.db_message['object-error'] =\
-                "Object "+network_id+"."+object_id+" Not Updated"
-            self.db_message['object-code'] = 400
-            self.debug( "Error: Object "+network_id+"."+object_id+" Not Updated" )
-            self.debug( err )
-            self.connection.rollback()
+            if success:
+                updated = True
+                
+                self.db_message['object-message'] =\
+                    "Object "+network_id+"."+object_id+" Updated"
+                self.db_message['object-code'] = 200
+                # Return only updated details
+                self.db_message['object-details'] =\
+                    update_object_request['object-details']
+                self.debug( "Object "+network_id+"."+object_id+" Updated" )
+                
+                '''
+                # Successful. Store request(s).
+                completed_request = {
+                    'type': 'update',
+                    'level': 'object',
+                    'network-id': network_id,
+                    'object-id': object_id,
+                    'request':  json.loads( json.dumps( update_object_request ) )
+                }
+                self.completed_request_tuple += (completed_request,)
+                '''
+            else:
+                self.db_message['object-error'] =\
+                    "Object "+network_id+"."+object_id+" Not Updated"
+                self.db_message['object-code'] = 400
+                self.debug( "Error: Object "+network_id+"."+object_id+" Not Updated" )
             
         except:
             self.db_message['object-error'] =\
@@ -852,36 +887,36 @@ class WallflowerDB:
                 'network_id': network_id,
                 'network_record': json.dumps( self.networks[network_id] )
             }
-            self.cursor.execute( query, query_params )
-            self.connection.commit()
+            success = self.execute( query, query_params )
             
-            updated = True
-            self.db_message['stream-message'] =\
-                "Stream "+network_id+"."+object_id+"."+stream_id+" Updated"
-            self.db_message['stream-code'] = 200
-            # Return only updated details
-            self.db_message['stream-details'] =\
-                update_stream_request['stream-details']            
-            self.debug( "Stream "+network_id+"."+object_id+"."+stream_id+" Updated" )
-            
-            # Successful. Store request(s).
-            completed_request = {
-                'type': 'update',
-                'level': 'stream',
-                'network-id': network_id,
-                'object-id': object_id,
-                'stream-id': stream_id,
-                'request':  json.loads( json.dumps( update_stream_request ) )
-            }
-            self.completed_request_tuple += (completed_request,)
-                                
-        except sqlite3.OperationalError, err:
-            self.db_message['stream-error'] =\
-                "Stream "+network_id+"."+object_id+"."+stream_id+" Not Updated"
-            self.db_message['stream-code'] = 400
-            self.debug( "Error: Stream "+network_id+"."+object_id+"."+stream_id+" Not Updated" )
-            self.debug( err )
-            self.connection.rollback()
+            if success:
+                updated = True
+                
+                self.db_message['stream-message'] =\
+                    "Stream "+network_id+"."+object_id+"."+stream_id+" Updated"
+                self.db_message['stream-code'] = 200
+                # Return only updated details
+                self.db_message['stream-details'] =\
+                    update_stream_request['stream-details']            
+                self.debug( "Stream "+network_id+"."+object_id+"."+stream_id+" Updated" )
+                
+                '''
+                # Successful. Store request(s).
+                completed_request = {
+                    'type': 'update',
+                    'level': 'stream',
+                    'network-id': network_id,
+                    'object-id': object_id,
+                    'stream-id': stream_id,
+                    'request':  json.loads( json.dumps( update_stream_request ) )
+                }
+                self.completed_request_tuple += (completed_request,)
+                '''
+            else:
+                self.db_message['stream-error'] =\
+                    "Stream "+network_id+"."+object_id+"."+stream_id+" Not Updated"
+                self.db_message['stream-code'] = 400
+                self.debug( "Error: Stream "+network_id+"."+object_id+"."+stream_id+" Not Updated" )
             
         except:
             self.db_message['stream-error'] =\
@@ -1029,7 +1064,9 @@ class WallflowerDB:
                             vals += ','+str(int(payload[i]))
                         query += ids+') VALUES '+vals+')'
                 """
-                self.cursor.execute( query, query_params )
+                success = self.execute( query, query_params )
+            
+                # TODO: Should use executemany, but HTTP API only supports one point updates
             
             if 'points' in the_stream:
                 the_points = the_stream['points'] + new_points
@@ -1069,37 +1106,37 @@ class WallflowerDB:
                 'network_id': network_id,
                 'network_record': json.dumps( self.networks[network_id] )
             }
-            self.cursor.execute( query, query_params )
-            self.connection.commit()
+            success = self.execute( query, query_params )
             
-            updated = True
-            
-            self.db_message['points-message'] =\
-                "Stream "+network_id+"."+object_id+"."+stream_id+".points Updated"
-            self.db_message['points-code'] = 200
-            # Return only updated details
-            self.db_message['points'] = new_points
-            self.debug( "Stream "+network_id+"."+object_id+"."+stream_id+".points Updated" )
-            
-            # Successful. Store request(s).
-            update_points_request['points'] = new_points
-            completed_request = {
-                'type': 'update',
-                'level': 'points',
-                'network-id': network_id,
-                'object-id': object_id,
-                'stream-id': stream_id,
-                'request': json.loads( json.dumps( update_points_request ) )
-            }
-            self.completed_request_tuple += (completed_request,)
-            
-        except sqlite3.OperationalError, err:
-            self.db_message['points-error'] =\
-                "Points "+network_id+"."+object_id+"."+stream_id+".points Not Updated"
-            self.db_message['points-code'] = 400
-            self.debug( "Points "+network_id+"."+object_id+"."+stream_id+".points Not Updated" )
-            self.debug( err )
-            self.connection.rollback()
+            if success:
+                updated = True
+                
+                self.db_message['points-message'] =\
+                    "Stream "+network_id+"."+object_id+"."+stream_id+".points Updated"
+                self.db_message['points-code'] = 200
+                # Return only updated details
+                self.db_message['points'] = new_points
+                self.debug( "Stream "+network_id+"."+object_id+"."+stream_id+".points Updated" )
+                
+                # Successful. Store request(s).
+                update_points_request['points'] = new_points
+                
+                '''
+                completed_request = {
+                    'type': 'update',
+                    'level': 'points',
+                    'network-id': network_id,
+                    'object-id': object_id,
+                    'stream-id': stream_id,
+                    'request': json.loads( json.dumps( update_points_request ) )
+                }
+                self.completed_request_tuple += (completed_request,)
+                '''
+            else:
+                self.db_message['points-error'] =\
+                    "Points "+network_id+"."+object_id+"."+stream_id+".points Not Updated"
+                self.db_message['points-code'] = 400
+                self.debug( "Points "+network_id+"."+object_id+"."+stream_id+".points Not Updated" )
             
         except:
             self.db_message['points-error'] =\
@@ -1137,27 +1174,25 @@ class WallflowerDB:
             query_params = {
                 'network_id': network_id
             }
-            self.cursor.execute( query, query_params )
-            self.connection.commit()
-
-            deleted = True
-            if update_message:
-                self.db_message['network-message'] =\
-                    "Network "+network_id+" Deleted"
-                self.db_message['network-code'] = 200
-            self.debug( "Network "+network_id+" Deleted" )
-
-            # Delete local record
-            self.networks[network_id] = {}
-
-        except sqlite3.OperationalError, err:
-            if update_message:
-                self.db_message['network-error'] =\
-                    "Network "+network_id+" Not Deleted"
-                self.db_message['network-code'] = 400
-            self.debug( "Error: Network "+network_id+" Not Deleted" )
-            self.debug( err )
-            self.connection.rollback()
+            success = self.execute( query, query_params )
+            
+            if success:
+                deleted = True
+                
+                if update_message:
+                    self.db_message['network-message'] =\
+                        "Network "+network_id+" Deleted"
+                    self.db_message['network-code'] = 200
+                self.debug( "Network "+network_id+" Deleted" )
+    
+                # Delete local record
+                self.networks[network_id] = {}
+            else:
+                if update_message:
+                    self.db_message['network-error'] =\
+                        "Network "+network_id+" Not Deleted"
+                    self.db_message['network-code'] = 400
+                self.debug( "Error: Network "+network_id+" Not Deleted" )
     
         except:
             # There was an error.
@@ -1203,25 +1238,22 @@ class WallflowerDB:
                 'network_id': network_id,
                 'network_record': json.dumps( self.networks[network_id] )
             }
-            self.cursor.execute( query, query_params )
-            self.connection.commit()
+            success = self.execute( query, query_params )
             
-            deleted = True
-            if update_message:
-                self.db_message['object-message'] =\
-                    "Object "+network_id+"."+object_id+" Deleted"
-                self.db_message['object-code'] = 200
-            self.debug( "Object "+network_id+"."+object_id+" Deleted" )
-    
+            if success:
+                deleted = True
+                if update_message:
+                    self.db_message['object-message'] =\
+                        "Object "+network_id+"."+object_id+" Deleted"
+                    self.db_message['object-code'] = 200
+                self.debug( "Object "+network_id+"."+object_id+" Deleted" )
             
-        except sqlite3.OperationalError, err:
-            if update_message:
-                self.db_message['object-error'] =\
-                    "Object "+network_id+"."+object_id+" Not Deleted"
-                self.db_message['object-code'] = 400
-            self.debug( "Error: Object "+network_id+"."+object_id+" Not Deleted" )
-            self.debug( err )
-            self.connection.rollback()
+            else:
+                if update_message:
+                    self.db_message['object-error'] =\
+                        "Object "+network_id+"."+object_id+" Not Deleted"
+                    self.db_message['object-code'] = 400
+                self.debug( "Error: Object "+network_id+"."+object_id+" Not Deleted" )
     
         except:
             # There was an error.
@@ -1257,39 +1289,39 @@ class WallflowerDB:
             # Drop table
             table_name = network_id+'.'+object_id+'.'+stream_id      
             query = "DROP TABLE '"+table_name+"'"
-            self.cursor.execute(query)
-            self.debug( "Stream "+network_id+"."+object_id+"."+stream_id+" DB Deleted" )
+            success = self.execute(query)
             
-            # If fails to update database, do nothing
-            del(self.networks[network_id]['objects'][object_id]['streams'][stream_id])
-            
-            # Update database                
-            query = "UPDATE wcc_networks SET timestamp=:at, "
-            query += "network_record=:network_record "
-            query += "WHERE network_id=:network_id"
-            query_params = {
-                'at': str(at),
-                'network_id': network_id,
-                'network_record': json.dumps( self.networks[network_id] )
-            }
-            self.cursor.execute( query, query_params )
-            self.connection.commit()
-
-            deleted = True
-            if update_message:
-                self.db_message['stream-message'] =\
-                    "Stream "+network_id+"."+object_id+"."+stream_id+" Deleted"
-                self.db_message['stream-code'] = 200
-            self.debug( "Stream "+network_id+"."+object_id+"."+stream_id+" Deleted" )
+            if success:
+                self.debug( "Stream "+network_id+"."+object_id+"."+stream_id+" DB Deleted" )
+                
+                # If fails to update database, do nothing
+                del(self.networks[network_id]['objects'][object_id]['streams'][stream_id])
+                
+                # Update database                
+                query = "UPDATE wcc_networks SET timestamp=:at, "
+                query += "network_record=:network_record "
+                query += "WHERE network_id=:network_id"
+                query_params = {
+                    'at': str(at),
+                    'network_id': network_id,
+                    'network_record': json.dumps( self.networks[network_id] )
+                }
+                success = self.execute( query, query_params )
+                
+                if success:
+                    deleted = True
+                    if update_message:
+                        self.db_message['stream-message'] =\
+                            "Stream "+network_id+"."+object_id+"."+stream_id+" Deleted"
+                        self.db_message['stream-code'] = 200
+                    self.debug( "Stream "+network_id+"."+object_id+"."+stream_id+" Deleted" )
                     
-        except sqlite3.OperationalError, err:
-            if update_message:
-                self.db_message['stream-error'] =\
-                    "Stream "+network_id+"."+object_id+"."+stream_id+" Not Deleted"
-                self.db_message['objects']['stream-code'] = 400
-            self.debug( "Error: Stream "+network_id+"."+object_id+"."+stream_id+" Not Deleted" )
-            self.debug( err )
-            self.connection.rollback()
+            if not deleted:
+                if update_message:
+                    self.db_message['stream-error'] =\
+                        "Stream "+network_id+"."+object_id+"."+stream_id+" Not Deleted"
+                    self.db_message['objects']['stream-code'] = 400
+                self.debug( "Error: Stream "+network_id+"."+object_id+"."+stream_id+" Not Deleted" )
     
         except:
             # There was an error.
@@ -1436,42 +1468,40 @@ class WallflowerDB:
             query += " ORDER BY timestamp DESC LIMIT :limit"
             query_params['limit'] = str(limit)
             
-            self.cursor.execute( query, query_params )
-            contents = self.cursor.fetchall()
+            contents, success = self.query( query, query_params )
             
-            for point in contents:
-                if 0 == points_details['points-length']:
-                    points.append({'at':point[0],'value':point[1]})
-                else:
-                    points.append({'at':point[0],'value':point[1:]})
-            
-            self.db_message['points-details'] =\
-                copy.deepcopy( self.networks[network_id]['objects'][object_id]['streams'][stream_id]['points-details'] )
-            if len(points) > 1 and isinstance(points[0]['value'],(int,long,float)):
-                min_val = points[0]['value']
-                max_val = points[0]['value']
-                for i in range(1,len(points)):
-                    if points[i]['value'] > max_val:
-                        max_val = points[i]['value']
-                    elif points[i]['value'] < min_val:
-                        min_val = points[i]['value']
-                self.db_message['points-details']['search-min-value'] = min_val
-                self.db_message['points-details']['search-max-value'] = max_val
-            
-            searched = True
-            self.db_message['points'] = points
-            self.db_message['points-message'] =\
-                "Points "+network_id+"."+object_id+"."+stream_id+".points Searched"
-            self.db_message['points-code'] = 200
-            self.debug( "Points "+network_id+"."+object_id+"."+stream_id+".points Searched" )
+            if success:
+                for point in contents:
+                    if 0 == points_details['points-length']:
+                        points.append({'at':point[0],'value':point[1]})
+                    else:
+                        points.append({'at':point[0],'value':point[1:]})
                 
-        except sqlite3.OperationalError, err:
-            self.db_message['points-error'] =\
-                "Points "+network_id+"."+object_id+"."+stream_id+".points Not Searched"
-            self.db_message['points-code'] = 400
-            self.debug( "Error: Points "+network_id+"."+object_id+"."+stream_id+".points Not Searched" )
-            self.debug( err )
-            self.connection.rollback()
+                self.db_message['points-details'] =\
+                    copy.deepcopy( self.networks[network_id]['objects'][object_id]['streams'][stream_id]['points-details'] )
+                if len(points) > 1 and isinstance(points[0]['value'],(int,long,float)):
+                    min_val = points[0]['value']
+                    max_val = points[0]['value']
+                    for i in range(1,len(points)):
+                        if points[i]['value'] > max_val:
+                            max_val = points[i]['value']
+                        elif points[i]['value'] < min_val:
+                            min_val = points[i]['value']
+                    self.db_message['points-details']['search-min-value'] = min_val
+                    self.db_message['points-details']['search-max-value'] = max_val
+                
+                searched = True
+                self.db_message['points'] = points
+                self.db_message['points-message'] =\
+                    "Points "+network_id+"."+object_id+"."+stream_id+".points Searched"
+                self.db_message['points-code'] = 200
+                self.debug( "Points "+network_id+"."+object_id+"."+stream_id+".points Searched" )
+                    
+            else:
+                self.db_message['points-error'] =\
+                    "Points "+network_id+"."+object_id+"."+stream_id+".points Not Searched"
+                self.db_message['points-code'] = 400
+                self.debug( "Error: Points "+network_id+"."+object_id+"."+stream_id+".points Not Searched" )
                 
         except:
             self.db_message['points-error'] =\
@@ -1496,19 +1526,15 @@ class WallflowerDB:
             query_params = {
                 'network_id': network_id
             }
-            self.cursor.execute( query, query_params )
-
-            # Get most recent network information
-            contents = self.cursor.fetchone()
-            self.networks[network_id] = json.loads( contents[0] )
+            contents, success = self.query( query, query_params )
             
-            self.debug( "Network "+network_id+" Loaded" )
-            exists = True
-                
-        except sqlite3.OperationalError, err:
-            self.debug( "Network "+network_id+" Not Loaded" )
-            self.debug( err )
-            self.connection.rollback()
+            if success and len(contents) > 0:
+                # Get most recent network information
+                self.networks[network_id] = json.loads( contents[0][0] )
+                self.debug( "Network "+network_id+" Loaded" )
+                exists = True
+            else:
+                self.debug( "Network "+network_id+" Not Loaded" )
                             
         except:
             self.debug( "Network "+network_id+" Not Loaded" )
@@ -1554,18 +1580,16 @@ class WallflowerDB:
             assert len( re.findall( "[^a-zA-Z0-9\-\_]", network_id+object_id+stream_id ) ) == 0
             
             db_exists = False
-
-            try:
-                # Try to query database
-                table_name = network_id+'.'+object_id+'.'+stream_id
-                query = "SELECT * FROM '"+table_name+"'"
-                self.cursor.execute(query)
+            
+            # Try to query database
+            table_name = network_id+'.'+object_id+'.'+stream_id
+            query = "SELECT * FROM '"+table_name+"'"
+            contents, success = self.query(query)
+            if success:
                 self.debug( "Stream "+network_id+"."+object_id+"."+stream_id+" DB Found" )
                 db_exists = True
-            except sqlite3.OperationalError, err:
+            else:
                 self.debug( "Stream "+network_id+"."+object_id+"."+stream_id+" DB Not Found" )
-                self.debug( err )
-                self.connection.rollback()
 
             if db_exists:
                 self.debug( "Stream "+network_id+"."+object_id+"."+stream_id+" Found" )
