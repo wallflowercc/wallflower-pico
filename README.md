@@ -1,6 +1,6 @@
 # Wallflower.Pico Server
 
-Wallflower.Pico is the first server released by [Wallflower.cc][wcc] and provides a simple and easy-to-learn introduction to the WCC platform. The Wallflower.Pico server implements the HTTP API and includes a JS/jQuery web interface. A demo of the interface can be found at [Wallflower.cc/demo][wccdemo] The server is written in Python and the HTTP API is built upon a Flask app. To enable real-time communication, Wallflower.Pico also supports the addition of a WebSocket port using an Autobahn/Twisted server. An SQLite database is employed for storage. We have elected to leave the API exposed in the server, demo, and interface code to enable easy modification and experimentation.
+Wallflower.Pico is the first server released by [Wallflower.cc][wcc] and provides a simple and easy-to-learn introduction to the WCC platform. The Wallflower.Pico server implements the HTTP API and includes a JS/jQuery web interface. A demo of the interface can be found at [Wallflower.cc/pico-demo][wccdemo] The server is written in Python and the HTTP API is built upon a Flask app. To enable real-time communication, Wallflower.Pico also supports the addition of a WebSocket port using an Autobahn/Twisted server. An SQLite database is employed for storage. We have elected to leave the API exposed in the server, demo, and interface code to enable easy modification and experimentation.
 
 #### Quick Start Guide
 
@@ -30,7 +30,7 @@ Then start the server by running
 ```sh
 $ python wallflower_pico_server.py
 ```
-Note that by enabling the WebSocket port, you will use index_ws.html instead of index.html as the web interface. Additionally, the WebSocket port is not capable of receiving requests and any messages sent to the port will be ignored.
+Note that the WebSocket port is not capable of receiving requests and any messages sent to the port will be ignored.
 
 The wallflower_demo.py file includes sample Python code for creating objects and streams and for sending new datapoints. Running the demo code with the WebSocket port enabled will illustrate the capabilities of the interactive dashboard. The wallflower_demo_ws.py file includes sample code for listening to messages broadcast by the WebSocket port using an Autobahn client.
 
@@ -46,6 +46,6 @@ In summary, any modifications to the Wallflower.Pico source code must be distrib
 
 
 [wcc]: <http://wallflower.cc>
-[wccdemo]: <http://wallflower.cc/demo>
+[wccdemo]: <http://wallflower.cc/pico-demo>
 [mit]: <https://opensource.org/licenses/MIT>
 [agpl]: <https://opensource.org/licenses/AGPL-3.0>
