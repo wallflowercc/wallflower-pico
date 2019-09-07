@@ -39,6 +39,12 @@ import re
 from base.wallflower_packet import WallflowerPacket
 from flask import g
 
+# For Python 2.* and 3.* support.
+try:
+  basestring
+except NameError:
+  basestring = str
+
 class WallflowerDB:
     
     debug = True
@@ -69,7 +75,7 @@ class WallflowerDB:
             #db.close()
             return True
                 
-        except sqlite3.OperationalError, err:
+        except sqlite3.OperationalError as err:
             self.debug( err )
             db.rollback()
             cursor.close()
@@ -93,7 +99,7 @@ class WallflowerDB:
             #db.close()
             return content, True
                 
-        except sqlite3.OperationalError, err:
+        except sqlite3.OperationalError as err:
             self.debug( err )
             db.rollback()
             cursor.close()
@@ -982,8 +988,6 @@ class WallflowerDB:
                                     payload[i] = basestring( payload[i] )
                                 elif python_type == int:
                                     payload[i] = int( payload[i] )
-                                elif python_type == long:
-                                    payload[i] = long( payload[i] )
                                 elif python_type == float:
                                     payload[i] = float( payload[i] )
                                 elif python_type == bool:
@@ -998,8 +1002,6 @@ class WallflowerDB:
                                 payload = basestring( payload )
                             elif python_type == int:
                                 payload = int( payload )
-                            elif python_type == long:
-                                payload = long( payload )
                             elif python_type == float:
                                 payload = float( payload )
                             elif python_type == bool:
@@ -1081,7 +1083,7 @@ class WallflowerDB:
                 the_stream['points'] = the_points
             
             # Update min and max
-            if len(new_points) > 0 and isinstance(new_points[0]['value'],(int,long,float)):
+            if len(new_points) > 0 and isinstance(new_points[0]['value'],(int,float)):
                 min_val = new_points[0]['value']
                 max_val = new_points[0]['value']
                 if all(k in points_details for k in ("min-value","max-value")):
@@ -1479,7 +1481,7 @@ class WallflowerDB:
                 
                 self.db_message['points-details'] =\
                     copy.deepcopy( self.networks[network_id]['objects'][object_id]['streams'][stream_id]['points-details'] )
-                if len(points) > 1 and isinstance(points[0]['value'],(int,long,float)):
+                if len(points) > 1 and isinstance(points[0]['value'],(int,float)):
                     min_val = points[0]['value']
                     max_val = points[0]['value']
                     for i in range(1,len(points)):
@@ -1537,6 +1539,7 @@ class WallflowerDB:
                 self.debug( "Network "+network_id+" Not Loaded" )
                             
         except:
+            self.debug( "Unexpected error (18):"+str(sys.exc_info()) )
             self.debug( "Network "+network_id+" Not Loaded" )
         
         return exists
