@@ -29,9 +29,15 @@
 
 __version__ = '0.0.1'
 
-from wallflower_schema import WallflowerSchema
+from base.wallflower_schema import WallflowerSchema
 import json
 import copy
+
+# For Python 2.* and 3.* support.
+try:
+  basestring
+except NameError:
+  basestring = str
 
 class WallflowerPacketBase:
     

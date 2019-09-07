@@ -32,6 +32,12 @@ __version__ = '0.0.1'
 import datetime
 import re
 
+# For Python 2.* and 3.* support.
+try:
+  basestring
+except NameError:
+  basestring = str
+
 class SchemaError(Exception):
 
     """Error during Schema validation."""
@@ -635,13 +641,11 @@ class WallflowerSchema():
         'value': TypeOr(
             basestring,
             int,
-            long,
             float,
             bool,
             [int],
-            [long],
             [float],
-            [int,long,float], # Allow mixed numerical list
+            [int,float], # Allow mixed numerical list
             [bool],
             error = 'Invalid point update request'
         ),
